@@ -15,7 +15,6 @@ def load_midi_notes(midi_file):
 
     tempo = 500000  # Default MIDI tempo (120 BPM) in microseconds per beat
     ticks_per_beat = midi.ticks_per_beat
-    total_time = 0  # Global time tracker
 
     for track in midi.tracks:
         track_time = 0  # Track-specific time accumulator
@@ -37,14 +36,16 @@ def synthesize_notes(notes, sr=22050, duration=0.5):
     """Generate a waveform from MIDI notes."""
     total_length = int(sr * (notes[-1][1] + duration))  # Compute required length of audio
     audio = np.zeros(total_length)  # Empty waveform
-
+    i = 0
     for freq, start_time, velocity in notes:
+        duration = notes[i+1][1] - start_time if i+1 < len(notes) else duration
+        print("duration:", duration)
         start_sample = int(start_time * sr)  # Convert start time to samples
         end_sample = start_sample + int(duration * sr)  # Duration per note
         t = np.linspace(0, duration, end_sample - start_sample, endpoint=False)
         waveform = 0.5 * np.sin(2 * np.pi * freq * t)  # Simple sine wave
         audio[start_sample:end_sample] += waveform * (velocity / 127)  # Scale by velocity
-
+        i += 1
     return audio
 
 def play_audio(audio, sr=22050):

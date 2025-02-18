@@ -62,7 +62,7 @@ data = load_timit_files_by_path(timit_base_path)
 # # %%
 # data["phonemes"]
 # # %%
-data["words"]
+# data["words"]
 # # %%
 # data["audio"]
 # %%
@@ -148,53 +148,29 @@ import mido
 def load_midi_notes(midi_file):
     midi = mido.MidiFile(midi_file)
     notes = []
-    
-    tempo = 500000  # Default tempo (120 BPM) in microseconds per beat
+
+    tempo = 500000  # Default MIDI tempo (120 BPM) in microseconds per beat
     ticks_per_beat = midi.ticks_per_beat
-    total_time = 0  # Track total elapsed time
 
-    for msg in midi:
-        # Convert delta ticks to seconds and accumulate total time
-        delta_time = mido.tick2second(msg.time, ticks_per_beat, tempo) * 1000
-        total_time += delta_time  
+    for track in midi.tracks:
+        track_time = 0  # Track-specific time accumulator
+        for msg in track:
+            delta_time = mido.tick2second(msg.time, ticks_per_beat, tempo)
+            # print("track_time:", track_time, "delta_time:", delta_time)
+            track_time += delta_time  # Accumulate time per track
 
-        if msg.type == 'set_tempo':
-            tempo = msg.tempo  # Update tempo dynamically
+            if msg.type == 'set_tempo':
+                tempo = msg.tempo  # Update tempo dynamically
 
-        if msg.type == 'note_on' and msg.velocity > 0:
-            print(f"Note: {msg.note}, Time: {total_time:.4f} sec, Delta Ticks: {msg.time}")
-            notes.append((msg.note, delta_time))
-
-    print("Total MIDI duration:", total_time, "seconds")
+            if msg.type == 'note_on' and msg.velocity > 0:
+                print("track_time:", track_time, "delta_time:", delta_time)
+                notes.append((msg.note, track_time))  # Store frequency, time, and velocity
     return notes
 
 # Load MIDI notes
 midi_file = 'data\MIDIs\Barbie Girl - Chorus - only vocal-Piano.mid'
 midi_notes = load_midi_notes(midi_file)
 
-#%% - sanity check
-# Play the MIDI notes
-import pygame.midi
-import time
-def play_notes(notes):
-    pygame.midi.init()
-    player = pygame.midi.Output(0)
-    player.set_instrument(0)  # Set to a piano sound
-
-    start_time = time.time()
-    
-    for note, note_time in notes:
-        # Wait until the correct time to play the note
-        while time.time() - start_time < note_time:
-            pass  
-        player.note_on(note, 127)
-        print(f"Playing note: {note} at {note_time:.2f} sec")
-
-    time.sleep(1)  # Let the last note play
-    player.close()
-    pygame.midi.quit()
-
-play_notes(midi_notes)
 #%%
 # # normalized all phonemes to the same length
 # max_length = max([len(phoneme) for phoneme in phonemes_audio])
@@ -202,15 +178,17 @@ play_notes(midi_notes)
 # %%
 musical_phonemes = []
 for i, midi_note in enumerate(midi_notes):
+    print(i+1, len(midi_notes), i+1 < len(midi_notes))
     phn_index = i % len(phonemes_audio)
     phoneme = phonemes_audio[phn_index]
-    note, duration = midi_note
-    if duration == 0:
-        continue
+    note, start_time = midi_note
+    duration = 0.5
+    if i+1 < len(midi_notes):
+        duration = (midi_notes[i+1][1] - start_time)
     target_pitch = librosa.midi_to_note(note)
     phoneme = pitch_shift_phoneme(phoneme, sr, target_pitch)
     start, end = phonemes_indexes[phn_index]
-    rate = duration / ((end - start)/sr)
+    rate = ((end - start) / sr) / (duration)
     print(duration, ((end - start)/sr), rate)
     phoneme = stretch_phoneme(phoneme, rate)
     musical_phonemes.append(phoneme)
