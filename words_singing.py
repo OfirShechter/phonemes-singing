@@ -71,37 +71,19 @@ audio, sr = librosa.load(data["audio"], sr=None)
 print("Audio shape:", audio.shape, "Sample rate:", sr)
 phonemes = data["phonemes"]
 words = data["words"]
-phonemes_audio = []
-phonemes_indexes = []
+words_audio = []
+words_indexes = []
 w_num = 0
 current_word = words.iloc[w_num]
 print("Word:", current_word['word'], "start:", current_word['start'], "end:", current_word['end'])
-for i, row in phonemes.iterrows():
-    if (row['phoneme'] == 'h#'):
-        continue
+for i, row in words.iterrows():
     start = row['start']
     end = row['end']
-    if start == current_word['start']:
-        print('---------------------------------------')
-        # if w_num == 1:
-        #     break
-        w_num += 1
-        
-        print("Word:", current_word['word'])
-        w_start = current_word['start']
-        w_end = current_word['end']
-        w_audio = audio[w_start:w_end]
-        ipd.display(ipd.Audio(w_audio, rate=sr))
-        try:
-            current_word = words.iloc[w_num]
-        except:
-            print("LAST WORD")
-        print("-------------------Word Phoneme:")
-    phoneme = audio[start:end]
-    phonemes_audio.append(phoneme)
-    phonemes_indexes.append((start, end))
-    print(f"Phoneme: {row['phoneme']}, start: {start}, end: {end}")
-    ipd.display(ipd.Audio(phoneme, rate=sr))
+    word = audio[start:end]
+    words_audio.append(word)
+    words_indexes.append((start, end))
+    print(f"Word: {row['word']}, start: {start}, end: {end}")
+    ipd.display(ipd.Audio(word, rate=sr))
 
 #%%
 def get_pitch(y, sr):
@@ -118,16 +100,16 @@ def get_pitch(y, sr):
 
 librosa.hz_to_midi(get_pitch(audio, sr))
 #%%
-def stretch_phoneme(phoneme_audio, rate):
-    return librosa.effects.time_stretch(phoneme_audio, rate=rate)
+def stretch(audio, rate):
+    return librosa.effects.time_stretch(audio, rate=rate)
 
 # Function to pitch-shift a phoneme
-def pitch_shift_phoneme(phoneme_audio, sr, target_pitch, velocity=127):
-    phoneme_audio = (phoneme_audio / np.max(phoneme_audio))  * (velocity / 127)
-
+def pitch_shift(audio, sr, target_pitch, velocity):
+    # adjust audio velocity
+    audio = (audio / np.max(audio))  * (velocity / 127)
     # Calculate the number of steps to shift
     target_midi = librosa.note_to_midi(target_pitch)
-    pitches, magnitudes = librosa.piptrack(y=phoneme_audio, sr=sr, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
+    pitches, magnitudes = librosa.piptrack(y=audio, sr=sr, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
     pitch_values = []
     for t in range(pitches.shape[1]):
         index = magnitudes[:, t].argmax()
@@ -136,15 +118,15 @@ def pitch_shift_phoneme(phoneme_audio, sr, target_pitch, velocity=127):
             pitch_values.append(pitch)
     if len(pitch_values) == 0:
         print("Warning: Could not estimate pitch for phoneme. Skipping pitch shift.")
-        return phoneme_audio
+        return audio
     original_midi = librosa.hz_to_midi(np.median(pitch_values))  # Get the median pitch
-    # original_midi = 55.8230354165873
+    # original_midi = 75
     n_steps = target_midi - original_midi
     # print(target_midi, original_midi, n_steps)
-    return librosa.effects.pitch_shift(phoneme_audio, sr=sr, n_steps=n_steps)
+    return librosa.effects.pitch_shift(audio, sr=sr, n_steps=n_steps)
 # %%
 # stretched_audio = np.concatenate([phonemes_audio[0], phonemes_audio[1], stretch_phoneme(phonemes_audio[2], 0.1)])
-merged_audio = np.concatenate(phonemes_audio)
+merged_audio = np.concatenate(words_audio)
 ipd.display(ipd.Audio(merged_audio, rate=sr))
 # %%
 import mido
@@ -168,7 +150,7 @@ def load_midi_notes(midi_file):
 
             if msg.type == 'note_on' and msg.velocity > 0:
                 print("track_time:", track_time, "delta_time:", delta_time)
-                notes.append((msg.note, track_time))  # Store frequency, time, and velocity
+                notes.append((msg.note, track_time, msg.velocity))  # Store frequency, time, and velocity
     return notes
 
 # Load MIDI notes
@@ -183,44 +165,22 @@ midi_notes = load_midi_notes(midi_file)
 musical_phonemes = []
 for i, midi_note in enumerate(midi_notes):
     print(i+1, len(midi_notes), i+1 < len(midi_notes))
-    phn_index = i % len(phonemes_audio)
-    phoneme = phonemes_audio[phn_index]
-    note, start_time = midi_note
+    w_index = i % len(words_audio)
+    phoneme = words_audio[w_index]
+    note, start_time, velocity = midi_note
     duration = 0.5
     if i+1 < len(midi_notes):
         duration = (midi_notes[i+1][1] - start_time)
     target_pitch = librosa.midi_to_note(note)
-    phoneme = pitch_shift_phoneme(phoneme, sr, target_pitch)
-    start, end = phonemes_indexes[phn_index]
+    phoneme = pitch_shift(phoneme, sr, target_pitch, velocity)
+    start, end = words_indexes[w_index]
     rate = ((end - start) / sr) / (duration)
     print(duration, ((end - start)/sr), rate)
-    phoneme = stretch_phoneme(phoneme, rate)
+    phoneme = stretch(phoneme, rate)
     musical_phonemes.append(phoneme)
 # %%
 musical_audio = np.concatenate(musical_phonemes)
 ipd.display(ipd.Audio(musical_audio, rate=sr))
-# %%
-##############################
-musical_phonemes = []
-for i, midi_note in enumerate(midi_notes):
-    print(i+1, len(midi_notes), i+1 < len(midi_notes))
-    phn_index = i % len(phonemes_audio)
-    phoneme = phonemes_audio[phn_index]
-    note, start_time = midi_note
-    duration = 0.5
-    if i+1 < len(midi_notes):
-        duration = (midi_notes[i+1][1] - start_time)
-    target_pitch = librosa.midi_to_note(note)
-    phoneme = pitch_shift_phoneme(phoneme, sr, target_pitch)
-    start, end = phonemes_indexes[phn_index]
-    rate = ((end - start) / sr) / (duration)
-    print(duration, ((end - start)/sr), rate)
-    phoneme = stretch_phoneme(phoneme, rate)
-    musical_phonemes.append(phoneme)
-# %%
-musical_audio = np.concatenate(musical_phonemes)
-ipd.display(ipd.Audio(musical_audio, rate=sr))
-
 # %%
 ipd.display(ipd.Audio(merged_audio, rate=sr))
 # %%
