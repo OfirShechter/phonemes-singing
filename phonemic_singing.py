@@ -55,7 +55,7 @@ def load_timit_files_by_path(path):
     data = {"sentence": sentence, "phonemes": phonemes, "words": words, "audio": audio}
     return data 
 #%%
-timit_base_path = "data/TRAIN/DR1/FVMH0/SA1"
+timit_base_path = "data\TRAIN\DR1\FECD0\SA2"
 data = load_timit_files_by_path(timit_base_path)
 # # %%
 # data["sentence"]
@@ -137,7 +137,7 @@ def pitch_shift_phoneme(phoneme_audio, sr, target_pitch, velocity=127):
     if len(pitch_values) == 0:
         print("Warning: Could not estimate pitch for phoneme. Skipping pitch shift.")
         return phoneme_audio
-    original_midi = librosa.hz_to_midi(np.median(pitch_values))  # Get the median pitch
+    original_midi = librosa.hz_to_midi(np.mean(pitch_values))  # Get the median pitch
     # original_midi = 55.8230354165873
     n_steps = target_midi - original_midi
     # print(target_midi, original_midi, n_steps)
@@ -203,6 +203,8 @@ ipd.display(ipd.Audio(musical_audio, rate=sr))
 ##############################
 musical_phonemes = []
 for i, midi_note in enumerate(midi_notes):
+    if i == len(phonemes_audio):
+        break
     print(i+1, len(midi_notes), i+1 < len(midi_notes))
     phn_index = i % len(phonemes_audio)
     phoneme = phonemes_audio[phn_index]
